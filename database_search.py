@@ -1,28 +1,38 @@
-USE my_database;
+import sqlite3
 
--- Create table
-CREATE TABLE IF NOT EXISTS tree_data (
-    `Parcela Site` VARCHAR(20),
-    `nombre_colectores` VARCHAR(20),
-    `fecha` DATE,
-    `parcela` INT,
-    `codigo_camara` VARCHAR(10),
-    `numero_arbol` INT,
-    `nombre_archivo` VARCHAR(20),
-    `especie_arbol` VARCHAR(50),
-    `hora_cerrar_oruga` TIME,
-    `hora_abrir_oruga` TIME,
-    `arbol_sano` VARCHAR(50),
-    `camara_con_termita` BOOLEAN,
-    `diametro_arbol_cm` FLOAT,
-    `temperatura` FLOAT,
-    `presion_atmosferica_kpa` FLOAT,
-    `notas` TEXT
-);
+# Connect to (or create) the SQLite database
+conn = sqlite3.connect('/Users/sanskarsrivastava/Desktop/CSE/Database-job/tree_data.db')
+cursor = conn.cursor()
 
--- Insert values
-INSERT INTO tree_data (`Parcela Site`,`nombre_colectores`,`fecha` ,`parcela`, `codigo_camara`, `numero_arbol`, `nombre_archivo`, `especie_arbol`, `hora_cerrar_oruga`, `hora_abrir_oruga`, `arbol_sano`, `camara_con_termita`, `diametro_arbol_cm`, `temperatura`, `presion_atmosferica_kpa`, `notas`) 
-VALUES 
+# Create the table (if it doesn't exist already)
+cursor.execute('''
+    CREATE TABLE IF NOT EXISTS tree_data (
+        "Parcela_Site" TEXT,
+        "nombre_colectores" TEXT,
+        "fecha" TEXT,
+        "parcela" INTEGER,
+        "codigo_camara" TEXT,
+        "numero_arbol" INTEGER,
+        "nombre_archivo" TEXT,
+        "especie_arbol" TEXT,
+        "hora_cerrar_oruga" TEXT,
+        "hora_abrir_oruga" TEXT,
+        "arbol_sano" TEXT,
+        "camara_con_termita" INTEGER,
+        "diametro_arbol_cm" REAL,
+        "temperatura" REAL,
+        "presion_atmosferica_kpa" REAL,
+        "notas" TEXT
+    )
+''')
+
+# Insert the data into the table
+cursor.execute('''
+    INSERT INTO tree_data ("Parcela_Site", "nombre_colectores", "fecha", "parcela", "codigo_camara", 
+    "numero_arbol", "nombre_archivo", "especie_arbol", "hora_cerrar_oruga", "hora_abrir_oruga", 
+    "arbol_sano", "camara_con_termita", "diametro_arbol_cm", "temperatura", 
+    "presion_atmosferica_kpa", "notas") 
+    VALUES 
 ('QUI_02', 'Franco Macedo, William Wallace', '2022-01-07', 1, 'G2', 9019, '9019', 'Mauritia flexuosa', '09:55:30', '10:01:30', 'si', 'no', 30.4, 28.3, 100.36, ''),
 ('QUI_02', 'Franco Macedo, William Wallace', '2022-01-07', 1, 'G2', 9019, '9019-2', 'Mauritia flexuosa', '10:02:05', '10:08:05', 'si', 'no', 31.8, 28.3, 100.36, ''),
 ('QUI_02', 'Franco Macedo, William Wallace', '2022-01-07', 1, 'G2', 9020, '9020', 'Mauritia flexuosa', '10:10:30', '10:16:30', 'si', 'no', 23.6, 28.3, 100.36, ''),
@@ -72,12 +82,90 @@ VALUES
 ('QUI_02', 'Franco Macedo, William Wallace', '2022-01-07', 15, 'C4', 9582, '9582', 'Tabebuia insignis', '13:54:00', '14:00:00', 'si', 'no', 18.5, 29.6, 99.97, ''),
 ('QUI_02', 'Franco Macedo, William Wallace', '2022-01-07', 15, 'C4', 9582, '9582-2', 'Tabebuia insignis', '14:03:05', '14:09:05', 'si', 'no', 17, 29.6, 99.97, ''),
 ('QUI_02', 'Franco Macedo, William Wallace', '2022-01-07', 15, 'C4', 9578, '9583', 'Tabebuia insignis', '13:31:00', '13:37:00', 'si', 'si', 23, 30.4, 100.11, 'con larvas urticantes'),
-('QUI_02', 'Franco Macedo, William Wallace', '2022-01-07', 15, 'C4', 9578, '9583-2', 'Tabebuia insignis', '13:42:50', '13:48:50', 'si', 'si', 28.1, 30.4, 100.11, 'con larvas urticantes');
+('QUI_02', 'Franco Macedo, William Wallace', '2022-01-07', 15, 'C4', 9578, '9583-2', 'Tabebuia insignis', '13:42:50', '13:48:50', 'si', 'si', 28.1, 30.4, 100.11, 'con larvas urticantes')
 
+''')
 
--- Create a full-text index on relevant columns
-ALTER TABLE tree_data ADD FULLTEXT INDEX (especie_arbol, nombre_colectores, notas);
+# Commit and close the connection
+conn.commit()
+conn.close()
 
--- Search query example
-SELECT * FROM tree_data
-WHERE MATCH(especie_arbol, nombre_colectores, notas) AGAINST ('search_term' IN NATURAL LANGUAGE MODE);
+def search_parcela_site(cursor):
+    search_input = input("Enter the Parcela Site to search for: ")
+    cursor.execute("SELECT * FROM tree_data WHERE Parcela_Site LIKE ?", ('%' + search_input + '%',))
+    results = cursor.fetchall()
+
+    if results:
+        for row in results:
+            print(row)
+    else:
+        print("No matches found.")
+
+def search_by_month(cursor):
+    month_input = input("Enter the month (MM) to search for: ")
+    cursor.execute("SELECT * FROM tree_data WHERE strftime('%m', fecha) = ?", (month_input,))
+    results = cursor.fetchall()
+
+    if results:
+        for row in results:
+            print(row)
+    else:
+        print("No matches found.")
+
+def search_by_year(cursor):
+    year_input = input("Enter the year (YYYY) to search for: ")
+    cursor.execute("SELECT * FROM tree_data WHERE strftime('%Y', fecha) = ?", (year_input,))
+    results = cursor.fetchall()
+
+    if results:
+        for row in results:
+            print(row)
+    else:
+        print("No matches found.")
+
+def search_by_month_and_year(cursor):
+    month_input = input("Enter the month (MM) to search for: ")
+    year_input = input("Enter the year (YYYY) to search for: ")
+    cursor.execute("SELECT * FROM tree_data WHERE strftime('%m', fecha) = ? AND strftime('%Y', fecha) = ?", (month_input, year_input))
+    results = cursor.fetchall()
+
+    if results:
+        for row in results:
+            print(row)
+    else:
+        print("No matches found.")
+
+def main():
+    # Connect to the SQLite database
+    conn = sqlite3.connect('/Users/sanskarsrivastava/Desktop/CSE/Database-job/tree_data.db')  # Corrected path
+    cursor = conn.cursor()
+
+    while True:
+        print("\nMenu:")
+        print("1) Search Parcela Site")
+        print("2) Search by Month")
+        print("3) Search by Year")
+        print("4) Search by Month and Year")
+        print("5) Exit")
+
+        choice = input("Choose an option (1-5): ")
+
+        if choice == '1':
+            search_parcela_site(cursor)
+        elif choice == '2':
+            search_by_month(cursor)
+        elif choice == '3':
+            search_by_year(cursor)
+        elif choice == '4':
+            search_by_month_and_year(cursor)
+        elif choice == '5':
+            print("Exiting...")
+            break
+        else:
+            print("Invalid choice. Please try again.")
+
+    # Close the database connection
+    conn.close()
+
+if __name__ == "__main__":
+    main()
