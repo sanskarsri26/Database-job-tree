@@ -82,7 +82,9 @@ cursor.execute('''
 ('QUI_02', 'Franco Macedo, William Wallace', '2022-01-07', 15, 'C4', 9582, '9582', 'Tabebuia insignis', '13:54:00', '14:00:00', 'si', 'no', 18.5, 29.6, 99.97, ''),
 ('QUI_02', 'Franco Macedo, William Wallace', '2022-01-07', 15, 'C4', 9582, '9582-2', 'Tabebuia insignis', '14:03:05', '14:09:05', 'si', 'no', 17, 29.6, 99.97, ''),
 ('QUI_02', 'Franco Macedo, William Wallace', '2022-01-07', 15, 'C4', 9578, '9583', 'Tabebuia insignis', '13:31:00', '13:37:00', 'si', 'si', 23, 30.4, 100.11, 'con larvas urticantes'),
-('QUI_02', 'Franco Macedo, William Wallace', '2022-01-07', 15, 'C4', 9578, '9583-2', 'Tabebuia insignis', '13:42:50', '13:48:50', 'si', 'si', 28.1, 30.4, 100.11, 'con larvas urticantes')
+('QUI_02', 'Franco Macedo, William Wallace', '2022-01-07', 15, 'C4', 9578, '9583-2', 'Tabebuia insignis', '13:42:50', '13:48:50', 'si', 'si', 28.1, 30.4, 100.11, 'con larvas urticantes'),
+('QUI_01', 'Franco Macedo, William Wallace', '2024-02-07', 15, 'C4', 9578, '9583-2', 'Tabebuia insignis', '13:42:50', '13:48:50', 'si', 'si', 28.1, 30.4, 100.11, 'con larvas urticantes')  
+
 
 ''')
 
@@ -103,14 +105,28 @@ def search_parcela_site(cursor):
 
 def search_by_month(cursor):
     month_input = input("Enter the month (MM) to search for: ")
-    cursor.execute("SELECT * FROM tree_data WHERE strftime('%m', fecha) = ?", (month_input,))
-    results = cursor.fetchall()
 
-    if results:
-        for row in results:
-            print(row)
+    # Check if the input is valid and has less than 2 characters
+    if month_input.isdigit() and 1 <= int(month_input) <= 12:
+        # If it's a single-digit month, format it to two digits
+        if len(month_input) < 2:
+            month_input = month_input.zfill(2)  # Converts '2' to '02'
+        
+        print(f"Searching for month: {month_input}")  # Debugging line
+        
+        # Execute the query using the normalized month
+        cursor.execute("SELECT * FROM tree_data WHERE strftime('%m', fecha) = ?", (month_input,))
+        results = cursor.fetchall()
+
+        if results:
+            for row in results:
+                print(row)
+        else:
+            print("No matches found.")
     else:
-        print("No matches found.")
+        print("Invalid input. Please enter a valid month (01-12).")
+
+
 
 def search_by_year(cursor):
     year_input = input("Enter the year (YYYY) to search for: ")
@@ -125,6 +141,15 @@ def search_by_year(cursor):
 
 def search_by_month_and_year(cursor):
     month_input = input("Enter the month (MM) to search for: ")
+
+    # Check if the input is valid and has less than 2 characters
+    if month_input.isdigit() and 1 <= int(month_input) <= 12:
+        # If it's a single-digit month, format it to two digits
+        if len(month_input) < 2:
+            month_input = month_input.zfill(2)  # Converts '2' to '02'
+        
+        # print(f"Searching for month: {month_input}")  # Debugging line
+
     year_input = input("Enter the year (YYYY) to search for: ")
     cursor.execute("SELECT * FROM tree_data WHERE strftime('%m', fecha) = ? AND strftime('%Y', fecha) = ?", (month_input, year_input))
     results = cursor.fetchall()
