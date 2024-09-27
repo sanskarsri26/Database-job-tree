@@ -191,6 +191,20 @@ def search_by_tree_number(cursor):
             print(row)
     else:
         print(f"No matches found for tree number '{tree_number}'.")
+def search_mini_plot(conn, Miniplot):
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM tree_data WHERE Miniplot = ?", (Miniplot,))
+    results = cursor.fetchall()
+    cursor.close()
+    return results
+
+def search_site(conn, Site):
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM tree_data WHERE Site = ?", (Site,))
+    results = cursor.fetchall()
+    cursor.close()
+    return results
+
 
 def main():
     # Connect to the SQLite database
@@ -205,9 +219,11 @@ def main():
         print("4) Search by Month and Year")
         print("5) Search by Tree Species")
         print("6) Search by Tree Number")
-        print("7) Exit")
+        print("7) Search for Site")
+        print("8) Search for Miniplot")
+        print("9) Exit")
 
-        choice = input("Choose an option (1-7): ")
+        choice = input("Choose an option (1-8): ")
 
         if choice == '1':
             search_parcela_site(cursor)
@@ -222,6 +238,27 @@ def main():
         elif choice == '6':
             search_by_tree_number(cursor)
         elif choice == '7':
+            site_to_search = input("Enter the Site to search: ")
+            results = search_site(conn, site_to_search)
+            if results:
+                print("Search Results:")
+                for row in results:
+                    print(row)
+            else:
+                print("No results found for the given Site.") 
+
+        elif choice == '8':
+            mini_plot_to_search = input("Enter the Mini_Plot to search: ")
+            #mini_plot_to_search = format_mini_plot(mini_plot_to_search)  # Format the Mini_Plot
+            results = search_mini_plot(conn, mini_plot_to_search)
+            if results:
+                print("Search Results:")
+                for row in results:
+                    print(row)
+            else:
+                print("No results found for the given Mini_Plot.")
+
+        elif choice == '9':
             print("Exiting...")
             break
         else:
