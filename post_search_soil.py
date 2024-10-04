@@ -8,7 +8,60 @@ def search_parcela_site(conn, Parcela_Site):
     cursor.close()
     return results
 
+# Function to search rows based on 'Site'
+def search_site(conn, Site):
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM post_soil_flux WHERE Site = ?", (Site,))
+    results = cursor.fetchall()
+    cursor.close()
+    return results
 
+# Function to search rows based on a specific month
+def search_by_month(conn, month):
+    cursor = conn.cursor()
+    query = "SELECT * FROM post_soil_flux WHERE strftime('%m', smpl_date) = ?"
+    cursor.execute(query, (month,))
+    results = cursor.fetchall()
+    cursor.close()
+    return results
+
+# Function to search rows based on a specific year
+def search_by_year(conn, year):
+    cursor = conn.cursor()
+    query = "SELECT * FROM post_soil_flux WHERE strftime('%Y', smpl_date) = ?"
+    cursor.execute(query, (year,))
+    results = cursor.fetchall()
+    cursor.close()
+    return results
+
+# Function to search rows based on both month and year
+def search_by_month_and_year(conn, month, year):
+    cursor = conn.cursor()
+    query = "SELECT * FROM post_soil_flux WHERE strftime('%m', smpl_date) = ? AND strftime('%Y', smpl_date) = ?"
+    cursor.execute(query, (month, year))
+    results = cursor.fetchall()
+    cursor.close()
+    return results
+
+# Ensure the month is in 'MM' format
+def format_month(month):
+    return month.zfill(2) if len(month) == 1 else month
+
+# Ensure the year is in 'YYYY' format
+def format_year(year):
+    return year.zfill(4) if len(year) < 4 else year
+
+# Function to search rows based on 'sub_plot'
+def search_mini_plot(conn, Miniplot):
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM post_soil_flux WHERE sub_plot = ?", (Miniplot,))
+    results = cursor.fetchall()
+    cursor.close()
+    return results
+
+# Function to ensure the MiniPlot value is correctly formatted
+def format_mini_plot(Miniplot):
+    return Miniplot.strip()  # Remove any leading/trailing spaces
 
 # Function to find duplicates based on plot_code, sub_plot, and CH4_finalflux_mgC_per_hr_m2
 def find_duplicates(conn):
