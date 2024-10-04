@@ -42,7 +42,7 @@ with open(csv_file_path, newline='') as csvfile:
     
     # Create a table with columns based on the CSV headers
     create_table_query = f'''
-    CREATE TABLE IF NOT EXISTS flux_data (
+    CREATE TABLE IF NOT EXISTS post_soil_flux (
         {', '.join([f"{column} TEXT" for column in unique_columns])}
     );
     '''
@@ -56,7 +56,7 @@ with open(csv_file_path, newline='') as csvfile:
         raise e
     
     # Prepare SQL command for inserting data
-    insert_query = f'INSERT INTO flux_data ({", ".join(unique_columns)}) VALUES ({", ".join(["?" for _ in unique_columns])})'
+    insert_query = f'INSERT INTO post_soil_flux ({", ".join(unique_columns)}) VALUES ({", ".join(["?" for _ in unique_columns])})'
     
     # Insert each row from the CSV file into the table
     for row in csv_reader:
