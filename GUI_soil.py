@@ -1,208 +1,287 @@
 import sqlite3
-import tkinter as tk
-from tkinter import messagebox, simpledialog
-from ttkthemes import ThemedTk
-from tkinter import ttk
-import pandas as pd
+import sys
+from PyQt5 import QtWidgets, QtCore
 
-# Database query functions
-def search_parcela_site(conn, Parcela_Site):
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM post_soil_flux WHERE plot_code = ?", (Parcela_Site,))
-    results = cursor.fetchall()
-    column_names = [description[0] for description in cursor.description]
-    cursor.close()
-    return results, column_names
+# Pagination constants
+ROWS_PER_PAGE = 50
 
-def search_site(conn, Site):
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM post_soil_flux WHERE Site = ?", (Site,))
-    results = cursor.fetchall()
-    column_names = [description[0] for description in cursor.description]
-    cursor.close()
-    return results, column_names
 
-def search_by_month(conn, month):
-    cursor = conn.cursor()
-    query = "SELECT * FROM post_soil_flux WHERE strftime('%m', smpl_date) = ?"
-    cursor.execute(query, (month,))
-    results = cursor.fetchall()
-    column_names = [description[0] for description in cursor.description]
-    cursor.close()
-    return results, column_names
+class SoilFluxDatabaseApp(QtWidgets.QWidget):
+    def __init__(self):
+        super().__init__()
+        self.init_ui()
+        self.conn = sqlite3.connect(
+            "/Users/sanskarsrivastava/Desktop/CSE/Database-job/post_soil_flux.db"
+        )  # Update this path
+        self.results = []
+        self.current_page = 0
 
-def search_by_year(conn, year):
-    cursor = conn.cursor()
-    query = "SELECT * FROM post_soil_flux WHERE strftime('%Y', smpl_date) = ?"
-    cursor.execute(query, (year,))
-    results = cursor.fetchall()
-    column_names = [description[0] for description in cursor.description]
-    cursor.close()
-    return results, column_names
+    def init_ui(self):
+        self.setWindowTitle("Soil Flux Database")
+        self.setGeometry(100, 100, 800, 600)
 
-def search_by_month_and_year(conn, month, year):
-    cursor = conn.cursor()
-    query = "SELECT * FROM post_soil_flux WHERE strftime('%m', smpl_date) = ? AND strftime('%Y', smpl_date) = ?"
-    cursor.execute(query, (month, year))
-    results = cursor.fetchall()
-    column_names = [description[0] for description in cursor.description]
-    cursor.close()
-    return results, column_names
+        # Layout
+        self.layout = QtWidgets.QVBoxLayout()
 
-def search_mini_plot(conn, Miniplot):
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM post_soil_flux WHERE sub_plot = ?", (Miniplot,))
-    results = cursor.fetchall()
-    column_names = [description[0] for description in cursor.description]
-    cursor.close()
-    return results, column_names
+        # Title Label
+        self.title_label = QtWidgets.QLabel("Select a Search Option:", self)
+        self.layout.addWidget(self.title_label)
 
-# Duplicate handling
-def find_duplicates(conn):
-    cursor = conn.cursor()
-    query = '''
-        SELECT plot_code, sub_plot, CH4_finalflux_mgC_per_hr_m2, COUNT(*) as count
-        FROM post_soil_flux
-        GROUP BY plot_code, sub_plot, CH4_finalflux_mgC_per_hr_m2
-        HAVING COUNT(*) > 1
-    '''
-    cursor.execute(query)
-    duplicates = cursor.fetchall()
-    cursor.close()
-    return duplicates
+        # Search Options
+        self.option_buttons = []
+        options = [
+            "1. Search by Parcela_Site",
+            "2. Search by Site",
+            "3. Search by Month",
+            "4. Search by Year",
+            "5. Search by Month and Year",
+            "6. Search by Mini-Plot",
+            "7. Check for Duplicates",
+        ]
 
-def list_duplicate_rows(conn, plot_code, sub_plot, CH4_finalflux_mgC_per_hr_m2):
-    cursor = conn.cursor()
-    cursor.execute('''SELECT rowid, * FROM post_soil_flux WHERE plot_code = ? AND sub_plot = ? AND CH4_finalflux_mgC_per_hr_m2 = ?''',
-                   (plot_code, sub_plot, CH4_finalflux_mgC_per_hr_m2))
-    rows = cursor.fetchall()
-    cursor.close()
-    return rows
+        for option in options:
+            button = QtWidgets.QPushButton(option, self)
+            button.clicked.connect(self.create_search_dialog(option))
+            self.layout.addWidget(button)
+            self.option_buttons.append(button)
 
-def delete_row(conn, rowid):
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM post_soil_flux WHERE rowid = ?", (rowid,))
-    conn.commit()
-    cursor.close()
+        # Table for displaying results
+        self.table = QtWidgets.QTableWidget(self)
+        self.layout.addWidget(self.table)
 
-def handle_duplicates(conn):
-    duplicates = find_duplicates(conn)
-    if not duplicates:
-        messagebox.showinfo("No Duplicates", "No duplicate rows found.")
-        return
+        # Navigation Buttons
+        self.navigation_layout = QtWidgets.QHBoxLayout()
+        self.prev_button = QtWidgets.QPushButton("Previous", self)
+        self.prev_button.clicked.connect(self.previous_page)
+        self.navigation_layout.addWidget(self.prev_button)
 
-    for dup in duplicates:
-        plot_code, sub_plot, CH4_finalflux_mgC_per_hr_m2, count = dup
-        response = messagebox.askyesno("Duplicate Found", 
-            f"Duplicate set found: plot_code={plot_code}, sub_plot={sub_plot}, CH4_finalflux_mgC_per_hr_m2={CH4_finalflux_mgC_per_hr_m2}. Do you want to delete one?")
-        
-        if response:  # If user chooses to delete
-            rows = list_duplicate_rows(conn, plot_code, sub_plot, CH4_finalflux_mgC_per_hr_m2)
-            if rows:
-                delete_row(conn, rows[0][0])  # Delete first row
-                messagebox.showinfo("Deleted", "A duplicate row has been deleted.")
-            else:
-                messagebox.showinfo("Error", "No rows found to delete.")
+        self.next_button = QtWidgets.QPushButton("Next", self)
+        self.next_button.clicked.connect(self.next_page)
+        self.navigation_layout.addWidget(self.next_button)
 
-# Function to display results in a Treeview (row and column format)
-def show_results(tree, results, column_names):
-    # Clear existing rows
-    for row in tree.get_children():
-        tree.delete(row)
-    
-    if results:
-        tree["columns"] = column_names
-        tree["show"] = "headings"
-        
-        # Set up column headers
-        for col in column_names:
-            tree.heading(col, text=col)
-            tree.column(col, anchor="center")
+        self.layout.addLayout(self.navigation_layout)
 
-        # Insert rows
-        for row in results:
-            tree.insert("", tk.END, values=row)
+        self.setLayout(self.layout)
 
-        # Update the scroll region to ensure scrollbars are active
-        tree.update_idletasks()
+    def create_search_dialog(self, option):
+        def inner():
+            search_term, ok = QtWidgets.QInputDialog.getText(
+                self, "Input", f"Enter value for {option}:"
+            )
+            if ok and search_term:
+                self.perform_search(option, search_term)
 
-    else:
-        messagebox.showinfo("No Results", "No matching records found.")
+        return inner
 
-# GUI Setup
-def create_gui():
-    conn = sqlite3.connect("/Users/sanskarsrivastava/Desktop/CSE/Database-job/post_soil_flux.db")  # Replace with your actual database path
-    
-    root = ThemedTk(theme="breeze")
-    root.title("Soil Flux Database")
+    def perform_search(self, option, search_term):
+        if option == "1. Search by Parcela_Site":
+            self.results, column_names = self.search_parcela_site(search_term)
+        elif option == "2. Search by Site":
+            self.results, column_names = self.search_site(search_term)
+        elif option == "3. Search by Month":
+            self.results, column_names = self.search_by_month(search_term)
+        elif option == "4. Search by Year":
+            self.results, column_names = self.search_by_year(search_term)
+        elif option == "5. Search by Month and Year":
+            month, ok1 = QtWidgets.QInputDialog.getText(
+                self, "Input", "Enter month (MM):"
+            )
+            if ok1:
+                year, ok2 = QtWidgets.QInputDialog.getText(
+                    self, "Input", "Enter year (YYYY):"
+                )
+                if ok2:
+                    self.results, column_names = self.search_by_month_and_year(
+                        month, year
+                    )
+        elif option == "6. Search by Mini-Plot":
+            self.results, column_names = self.search_mini_plot(search_term)
+        elif option == "7. Check for Duplicates":
+            self.handle_duplicates()
+            return
 
-    title_label = ttk.Label(root, text="Soil Flux Database Menu", font=("Helvetica", 18))
-    title_label.pack(pady=20)
+        if not self.results:
+            QtWidgets.QMessageBox.information(
+                self, "No Results", "No matching records found."
+            )
+            return
 
-    # Create a frame for the Treeview and Scrollbars
-    columns_frame = ttk.Frame(root)
-    columns_frame.pack(pady=10, fill=tk.BOTH, expand=True)
+        self.current_page = 0
+        self.update_table(column_names)
 
-    # Create Treeview for displaying results
-    tree = ttk.Treeview(columns_frame)
-    tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+    def search_parcela_site(self, parcela_site):
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT * FROM post_soil_flux WHERE plot_code = ?", (parcela_site,)
+        )
+        results = cursor.fetchall()
+        column_names = [description[0] for description in cursor.description]
+        cursor.close()
+        return results, column_names
 
-    # Scrollbars
-    y_scrollbar = ttk.Scrollbar(columns_frame, orient=tk.VERTICAL, command=tree.yview)
-    y_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-    
-    x_scrollbar = ttk.Scrollbar(root, orient=tk.HORIZONTAL, command=tree.xview)
-    x_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
+    def search_site(self, site):
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM post_soil_flux WHERE Site = ?", (site,))
+        results = cursor.fetchall()
+        column_names = [description[0] for description in cursor.description]
+        cursor.close()
+        return results, column_names
 
-    tree.configure(yscrollcommand=y_scrollbar.set, xscrollcommand=x_scrollbar.set)
+    def search_by_month(self, month):
+        cursor = self.conn.cursor()
+        query = "SELECT * FROM post_soil_flux WHERE strftime('%m', smpl_date) = ?"
+        cursor.execute(query, (month,))
+        results = cursor.fetchall()
+        column_names = [description[0] for description in cursor.description]
+        cursor.close()
+        return results, column_names
 
-    # Define button actions
-    def option_1():
-        parcela_site = simpledialog.askstring("Input", "Enter the Parcela_Site to search:")
-        results, column_names = search_parcela_site(conn, parcela_site)
-        show_results(tree, results, column_names)
+    def search_by_year(self, year):
+        cursor = self.conn.cursor()
+        query = "SELECT * FROM post_soil_flux WHERE strftime('%Y', smpl_date) = ?"
+        cursor.execute(query, (year,))
+        results = cursor.fetchall()
+        column_names = [description[0] for description in cursor.description]
+        cursor.close()
+        return results, column_names
 
-    def option_2():
-        site = simpledialog.askstring("Input", "Enter the Site to search:")
-        results, column_names = search_site(conn, site)
-        show_results(tree, results, column_names)
+    def search_by_month_and_year(self, month, year):
+        cursor = self.conn.cursor()
+        query = "SELECT * FROM post_soil_flux WHERE strftime('%m', smpl_date) = ? AND strftime('%Y', smpl_date) = ?"
+        cursor.execute(query, (month, year))
+        results = cursor.fetchall()
+        column_names = [description[0] for description in cursor.description]
+        cursor.close()
+        return results, column_names
 
-    def option_3():
-        month = simpledialog.askstring("Input", "Enter the month (MM) to search:")
-        results, column_names = search_by_month(conn, month)
-        show_results(tree, results, column_names)
+    def search_mini_plot(self, mini_plot):
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM post_soil_flux WHERE sub_plot = ?", (mini_plot,))
+        results = cursor.fetchall()
+        column_names = [description[0] for description in cursor.description]
+        cursor.close()
+        return results, column_names
 
-    def option_4():
-        year = simpledialog.askstring("Input", "Enter the year (YYYY) to search:")
-        results, column_names = search_by_year(conn, year)
-        show_results(tree, results, column_names)
+    def update_table(self, column_names):
+        self.table.clear()
+        self.table.setColumnCount(len(column_names))
+        self.table.setHorizontalHeaderLabels(column_names)
 
-    def option_5():
-        month = simpledialog.askstring("Input", "Enter the month (MM) to search:")
-        year = simpledialog.askstring("Input", "Enter the year (YYYY) to search:")
-        results, column_names = search_by_month_and_year(conn, month, year)
-        show_results(tree, results, column_names)
+        if not self.results:
+            return
 
-    def option_6():
-        mini_plot = simpledialog.askstring("Input", "Enter the Mini_Plot to search:")
-        results, column_names = search_mini_plot(conn, mini_plot)
-        show_results(tree, results, column_names)
+        # Set the number of rows for the current page
+        num_rows = min(
+            ROWS_PER_PAGE, len(self.results) - self.current_page * ROWS_PER_PAGE
+        )
+        self.table.setRowCount(num_rows)
 
-    def option_7():
-        handle_duplicates(conn)
+        # Fill the table with data for the current page
+        for row_idx in range(num_rows):
+            for col_idx in range(len(column_names)):
+                self.table.setItem(
+                    row_idx,
+                    col_idx,
+                    QtWidgets.QTableWidgetItem(
+                        str(
+                            self.results[self.current_page * ROWS_PER_PAGE + row_idx][
+                                col_idx
+                            ]
+                        )
+                    ),
+                )
 
-    # Create buttons
-    buttons_frame = ttk.Frame(root)
-    buttons_frame.pack(pady=20)
+    def next_page(self):
+        if (self.current_page + 1) * ROWS_PER_PAGE < len(self.results):
+            self.current_page += 1
+            self.update_table(
+                [
+                    description[0]
+                    for description in self.conn.execute(
+                        "SELECT * FROM post_soil_flux"
+                    ).description
+                ]
+            )
 
-    ttk.Button(buttons_frame, text="1. Search by Parcela_Site", command=option_1).pack(pady=5)
-    ttk.Button(buttons_frame, text="2. Search by Site", command=option_2).pack(pady=5)
-    ttk.Button(buttons_frame, text="3. Search by Month", command=option_3).pack(pady=5)
-    ttk.Button(buttons_frame, text="4. Search by Year", command=option_4).pack(pady=5)
-    ttk.Button(buttons_frame, text="5. Search by Month and Year", command=option_5).pack(pady=5)
-    ttk.Button(buttons_frame, text="6. Search by Mini-Plot", command=option_6).pack(pady=5)
-    ttk.Button(buttons_frame, text="7. Check for Duplicates", command=option_7).pack(pady=5)
+    def previous_page(self):
+        if self.current_page > 0:
+            self.current_page -= 1
+            self.update_table(
+                [
+                    description[0]
+                    for description in self.conn.execute(
+                        "SELECT * FROM post_soil_flux"
+                    ).description
+                ]
+            )
 
-    root.mainloop()
+    def find_duplicates(self):
+        cursor = self.conn.cursor()
+        query = """
+            SELECT plot_code, sub_plot, CH4_finalflux_mgC_per_hr_m2, COUNT(*) as count
+            FROM post_soil_flux
+            GROUP BY plot_code, sub_plot, CH4_finalflux_mgC_per_hr_m2
+            HAVING COUNT(*) > 1
+        """
+        cursor.execute(query)
+        duplicates = cursor.fetchall()
+        cursor.close()
+        return duplicates
 
-create_gui()
+    def list_duplicate_rows(self, plot_code, sub_plot, CH4_finalflux_mgC_per_hr_m2):
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """SELECT rowid, * FROM post_soil_flux WHERE plot_code = ? AND sub_plot = ? AND CH4_finalflux_mgC_per_hr_m2 = ?""",
+            (plot_code, sub_plot, CH4_finalflux_mgC_per_hr_m2),
+        )
+        rows = cursor.fetchall()
+        cursor.close()
+        return rows
+
+    def delete_row(self, rowid):
+        cursor = self.conn.cursor()
+        cursor.execute("DELETE FROM post_soil_flux WHERE rowid = ?", (rowid,))
+        self.conn.commit()
+        cursor.close()
+
+    def handle_duplicates(self):
+        duplicates = self.find_duplicates()
+        if not duplicates:
+            QtWidgets.QMessageBox.information(
+                self, "No Duplicates", "No duplicate rows found."
+            )
+            return
+
+        for dup in duplicates:
+            plot_code, sub_plot, CH4_finalflux_mgC_per_hr_m2, count = dup
+            response = QtWidgets.QMessageBox.question(
+                self,
+                "Duplicate Found",
+                f"Duplicate set found: plot_code={plot_code}, sub_plot={sub_plot}, CH4_finalflux_mgC_per_hr_m2={CH4_finalflux_mgC_per_hr_m2}. Do you want to delete one?",
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            )
+
+            if response == QtWidgets.QMessageBox.Yes:
+                rows = self.list_duplicate_rows(
+                    plot_code, sub_plot, CH4_finalflux_mgC_per_hr_m2
+                )
+                if rows:
+                    self.delete_row(rows[0][0])  # Deletes the first found duplicate
+                    QtWidgets.QMessageBox.information(
+                        self, "Deleted", "One duplicate row has been deleted."
+                    )
+                else:
+                    QtWidgets.QMessageBox.warning(
+                        self, "Error", "No rows found for deletion."
+                    )
+
+    def closeEvent(self, event):
+        self.conn.close()
+        event.accept()
+
+
+if __name__ == "__main__":
+    app = QtWidgets.QApplication(sys.argv)
+    window = SoilFluxDatabaseApp()
+    window.show()
+    sys.exit(app.exec_())
