@@ -1,5 +1,10 @@
+import os
+import shutil
 import sqlite3
 import sys
+import subprocess
+import csv  # Import CSV module
+from datetime import datetime
 from PyQt5 import QtWidgets, QtCore
 
 # Pagination constants
@@ -10,9 +15,8 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
         self.init_ui()
-        self.conn = sqlite3.connect(
-            "/Users/sanskarsrivastava/Desktop/CSE/Database-job/post_soil_flux.db"
-        )  # Update this path
+        self.db_path = "/Users/sanskarsrivastava/Desktop/CSE/Database-job/post_soil_flux.db"  # Update this path
+        self.conn = sqlite3.connect(self.db_path)
         self.results = []
         self.current_page = 0
 
@@ -20,11 +24,20 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
         self.setWindowTitle("Soil Flux Database")
         self.setGeometry(100, 100, 800, 600)
 
-        # Layout
+        # Create menu bar
+        menubar = QtWidgets.QMenuBar(self)
+        file_menu = menubar.addMenu("File")
+
+        # Add "Open DB Browser" action
+        open_db_action = QtWidgets.QAction("Open DB Browser", self)
+        open_db_action.triggered.connect(self.open_db_browser)
+        file_menu.addAction(open_db_action)
+
         self.layout = QtWidgets.QVBoxLayout()
+        self.layout.setMenuBar(menubar)
 
         # Title Label
-        self.title_label = QtWidgets.QLabel("Select a Search Option:", self)
+        self.title_label = QtWidgets.QLabel("Select a Option:", self)
         self.layout.addWidget(self.title_label)
 
         # Search Options
@@ -37,6 +50,8 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
             "5. Search by Month and Year",
             "6. Search by Mini-Plot",
             "7. Check for Duplicates",
+            "8. Backup Database",
+            "9. Export Search Results as CSV",
         ]
 
         for option in options:
@@ -60,11 +75,18 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
         self.navigation_layout.addWidget(self.next_button)
 
         self.layout.addLayout(self.navigation_layout)
-
         self.setLayout(self.layout)
 
     def create_search_dialog(self, option):
         def inner():
+            if option == "8. Backup Database":  # Handle the backup option separately
+                self.backup_database()
+                self.open_db_browser()  # Open DB Browser after backup
+                return
+            elif option == "9. Export Search Results as CSV":  # Handle CSV export
+                self.export_csv()
+                return
+
             search_term, ok = QtWidgets.QInputDialog.getText(
                 self, "Input", f"Enter value for {option}:"
             )
@@ -215,73 +237,79 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
                 ]
             )
 
-    def find_duplicates(self):
-        cursor = self.conn.cursor()
-        query = """
-            SELECT plot_code, sub_plot, CH4_finalflux_mgC_per_hr_m2, COUNT(*) as count
-            FROM post_soil_flux
-            GROUP BY plot_code, sub_plot, CH4_finalflux_mgC_per_hr_m2
-            HAVING COUNT(*) > 1
-        """
-        cursor.execute(query)
-        duplicates = cursor.fetchall()
-        cursor.close()
-        return duplicates
-
-    def list_duplicate_rows(self, plot_code, sub_plot, CH4_finalflux_mgC_per_hr_m2):
-        cursor = self.conn.cursor()
-        cursor.execute(
-            """SELECT rowid, * FROM post_soil_flux WHERE plot_code = ? AND sub_plot = ? AND CH4_finalflux_mgC_per_hr_m2 = ?""",
-            (plot_code, sub_plot, CH4_finalflux_mgC_per_hr_m2),
-        )
-        rows = cursor.fetchall()
-        cursor.close()
-        return rows
-
-    def delete_row(self, rowid):
-        cursor = self.conn.cursor()
-        cursor.execute("DELETE FROM post_soil_flux WHERE rowid = ?", (rowid,))
-        self.conn.commit()
-        cursor.close()
-
-    def handle_duplicates(self):
-        duplicates = self.find_duplicates()
-        if not duplicates:
-            QtWidgets.QMessageBox.information(
-                self, "No Duplicates", "No duplicate rows found."
-            )
-            return
-
-        for dup in duplicates:
-            plot_code, sub_plot, CH4_finalflux_mgC_per_hr_m2, count = dup
+    def export_csv(self):
+        if not self.results:  # Check if no search results are available
             response = QtWidgets.QMessageBox.question(
                 self,
-                "Duplicate Found",
-                f"Duplicate set found: plot_code={plot_code}, sub_plot={sub_plot}, CH4_finalflux_mgC_per_hr_m2={CH4_finalflux_mgC_per_hr_m2}. Do you want to delete one?",
+                "Export All Data",
+                "No search results available. Do you want to export the entire database?",
                 QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
             )
 
             if response == QtWidgets.QMessageBox.Yes:
-                rows = self.list_duplicate_rows(
-                    plot_code, sub_plot, CH4_finalflux_mgC_per_hr_m2
-                )
-                if rows:
-                    self.delete_row(rows[0][0])  # Deletes the first found duplicate
-                    QtWidgets.QMessageBox.information(
-                        self, "Deleted", "One duplicate row has been deleted."
-                    )
-                else:
-                    QtWidgets.QMessageBox.warning(
-                        self, "Error", "No rows found for deletion."
-                    )
+                # Fetch all data from the database
+                cursor = self.conn.cursor()
+                cursor.execute("SELECT * FROM post_soil_flux")
+                self.results = cursor.fetchall()
+                column_names = [description[0] for description in cursor.description]
+                cursor.close()
+            else:
+                return
 
-    def closeEvent(self, event):
-        self.conn.close()
-        event.accept()
+        # Define the CSV filename and path
+        current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+        csv_filename = f"exported_data_{current_time}.csv"
+        csv_path = os.path.join(os.path.dirname(self.db_path), csv_filename)
+
+        # Write the data (either search results or the whole table) to a CSV file
+        with open(csv_path, mode="w", newline="") as file:
+            writer = csv.writer(file)
+            writer.writerow(column_names)
+            writer.writerows(self.results)
+
+        QtWidgets.QMessageBox.information(
+            self, "Export Successful", f"Results exported to {csv_path}"
+        )
+
+    def handle_duplicates(self):
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT plot_code, COUNT(*) FROM post_soil_flux GROUP BY plot_code HAVING COUNT(*) > 1"
+        )
+        duplicates = cursor.fetchall()
+        if not duplicates:
+            QtWidgets.QMessageBox.information(
+                self, "No Duplicates", "No duplicate entries found."
+            )
+        else:
+            duplicate_msg = "\n".join(
+                [f"{row[0]}: {row[1]} duplicates" for row in duplicates]
+            )
+            QtWidgets.QMessageBox.warning(self, "Duplicates Found", duplicate_msg)
+
+    def backup_database(self):
+        db_directory = os.path.dirname(self.db_path)
+        backup_path = os.path.join(
+            db_directory, f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+        )
+        shutil.copy2(self.db_path, backup_path)
+        QtWidgets.QMessageBox.information(
+            self, "Backup Successful", f"Database backed up to {backup_path}"
+        )
+
+    def open_db_browser(self):
+        try:
+            subprocess.run(["open", "-a", "DB Browser for SQLite", self.db_path])
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "Error", str(e))
 
 
-if __name__ == "__main__":
+def main():
     app = QtWidgets.QApplication(sys.argv)
     window = SoilFluxDatabaseApp()
     window.show()
     sys.exit(app.exec_())
+
+
+if __name__ == "__main__":
+    main()
