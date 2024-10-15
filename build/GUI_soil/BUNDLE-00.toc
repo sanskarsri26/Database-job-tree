@@ -1,0 +1,3 @@
+([('GUI_soil',
+   '/Users/sanskarsrivastava/Desktop/CSE/Database-job/dist/GUI_soil',
+   'EXECUTABLE')],)

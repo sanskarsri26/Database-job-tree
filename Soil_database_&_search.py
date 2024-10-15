@@ -40,7 +40,7 @@ cursor.execute(
 
 # Insert the data into the table
 cursor.execute(
-    '''
+    """
     INSERT INTO soil_data (
         "Site", "Parcela_Site", "fecha", "Miniplot", "Cámara", 
         "Archivo Licor", "hora_cerrar_oruga", "hora_abrir_oruga", 
@@ -158,7 +158,7 @@ cursor.execute(
         ('QUI', 'QUI-02N', '2024-10-06', '7C-R', 'C3', '7C-R-C', '13:32:00', '13:38:10', 27.9, 100.62, '', '', '', '', '', '', '', 6.4, 8.2, 4.8, 7.7, '', -5, 'NO', '', ''),
         ('QUI', 'QUI-02N', '2024-10-06', 'N2-R', 'C3', 'N2-R-C', '13:41:54', '13:47:08', 27.9, 100.62, '', '', '', '', '', '', '', 3.5, 2.5, 5, 5, '', 6.5, 'NO', '', '')
 
-        '''
+        """
 )
 
 

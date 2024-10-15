@@ -3,7 +3,7 @@ import shutil
 import sqlite3
 import sys
 import subprocess
-import csv  # Import CSV module
+import csv
 from datetime import datetime
 from PyQt5 import QtWidgets, QtCore
 
@@ -12,13 +12,55 @@ ROWS_PER_PAGE = 50
 
 
 class SoilFluxDatabaseApp(QtWidgets.QWidget):
+
     def __init__(self):
         super().__init__()
         self.init_ui()
-        self.db_path = "/Users/sanskarsrivastava/Desktop/CSE/Database-job/post_soil_flux.db"  # Update this path
+        self.db_path = self.select_database()  # Open file dialog to select database
         self.conn = sqlite3.connect(self.db_path)
         self.results = []
         self.current_page = 0
+
+        # Define selected columns
+        self.selected_columns = [
+            "smpl_date",
+            "sub_plot",
+            "chamber",
+            "LICOR_CO2_data_file_name",
+            "raw_start_time",
+            "raw_end_time",
+            "air_temp_c",
+            "atmp_Kpa",
+            "soil_temp_c",
+            "ave_collar_height",
+            "water_height_above_soil",
+            "floating_chamber_used",
+            "floating_collar_height",
+            "flooded_chamber",
+            "flooded_site",
+            "site_comments",
+            "date_time",
+            "ave_pH",
+            "instr",
+            "field_workers",
+            "Final_CH4_flux_category",
+            "Final_CO2_flux_category",
+            "Final_CO2_file_status",
+            "CH4_rsquared",
+            "CO2_rsquared",
+            "CH4_exp_rsquared",
+            "CO2_exp_rsquared",
+            "CH4_fieldflux_mgC_per_hr_m2_linear",
+            "CH4_fieldflux_mgC_per_hr_m2_exponential",
+            "CO2_fieldflux_mgC_per_hr_m2_linear",
+            "CO2_fieldflux_mgC_per_hr_m2_exponential",
+            "No_QAQC_CH4_finalflux_mgC_per_hr_m2",
+            "No_QAQC_CO2_finalflux_mgC_per_hr_m2",
+            "Final_CH4_flux_valid_or_not",
+            "Final_CO2_flux_valid_or_not",
+            "CH4_finalflux_mgC_per_hr_m2",
+            "CO2_finalflux_mgC_per_hr_m2",
+        ]
 
     def init_ui(self):
         self.setWindowTitle("Soil Flux Database")
@@ -36,8 +78,19 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
         self.layout = QtWidgets.QVBoxLayout()
         self.layout.setMenuBar(menubar)
 
+        # Dropdown for column selection (Full Column / Selected Column)
+        self.column_selection_combo = QtWidgets.QComboBox(self)
+        self.column_selection_combo.addItems(["Full Column", "Selected Column"])
+        self.column_selection_combo.setCurrentIndex(0)  # Default to Full Column
+
+        # Layout for dropdown (positioning in top-right)
+        self.dropdown_layout = QtWidgets.QHBoxLayout()
+        self.dropdown_layout.addStretch(1)  # Push dropdown to the right
+        self.dropdown_layout.addWidget(self.column_selection_combo)
+        self.layout.addLayout(self.dropdown_layout)
+
         # Title Label
-        self.title_label = QtWidgets.QLabel("Select a Option:", self)
+        self.title_label = QtWidgets.QLabel("Select an Option:", self)
         self.layout.addWidget(self.title_label)
 
         # Search Options
@@ -76,6 +129,18 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
 
         self.layout.addLayout(self.navigation_layout)
         self.setLayout(self.layout)
+
+    def select_database(self):
+        db_file, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self,
+            "Select SQLite Database",
+            "",
+            "SQLite Database Files (*.db);;All Files (*)",
+        )
+        if not db_file:
+            QtWidgets.QMessageBox.critical(self, "Error", "No database selected!")
+            sys.exit(1)  # Exit if no database is selected
+        return db_file
 
     def create_search_dialog(self, option):
         def inner():
@@ -129,6 +194,18 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
             return
 
         self.current_page = 0
+        selected_option = self.column_selection_combo.currentText()
+
+        if selected_option == "Full Column":
+            column_names = [
+                description[0]
+                for description in self.conn.execute(
+                    "SELECT * FROM post_soil_flux"
+                ).description
+            ]
+        else:  # "Selected Column"
+            column_names = self.selected_columns
+
         self.update_table(column_names)
 
     def search_parcela_site(self, parcela_site):
@@ -178,138 +255,149 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
 
     def search_mini_plot(self, mini_plot):
         cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM post_soil_flux WHERE sub_plot = ?", (mini_plot,))
+        cursor.execute("SELECT * FROM post_soil_flux WHERE mini_plot = ?", (mini_plot,))
         results = cursor.fetchall()
         column_names = [description[0] for description in cursor.description]
         cursor.close()
         return results, column_names
 
+    def handle_duplicates(self):
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT smpl_date, sub_plot, chamber, COUNT(*) as count FROM post_soil_flux GROUP BY smpl_date, sub_plot, chamber HAVING count > 1"
+        )
+        duplicates = cursor.fetchall()
+
+        if not duplicates:
+            QtWidgets.QMessageBox.information(
+                self, "No Duplicates", "No duplicate records found."
+            )
+        else:
+            msg = "Duplicate records found:\n\n"
+            for row in duplicates:
+                msg += f"Date: {row[0]}, Plot: {row[1]}, Chamber: {row[2]}, Count: {row[3]}\n"
+            QtWidgets.QMessageBox.information(self, "Duplicates", msg)
+
     def update_table(self, column_names):
-        self.table.clear()
+        self.table.setRowCount(0)
         self.table.setColumnCount(len(column_names))
         self.table.setHorizontalHeaderLabels(column_names)
 
-        if not self.results:
-            return
+        start_row = self.current_page * ROWS_PER_PAGE
+        end_row = start_row + ROWS_PER_PAGE
+        data_to_display = self.results[start_row:end_row]
 
-        # Set the number of rows for the current page
-        num_rows = min(
-            ROWS_PER_PAGE, len(self.results) - self.current_page * ROWS_PER_PAGE
-        )
-        self.table.setRowCount(num_rows)
-
-        # Fill the table with data for the current page
-        for row_idx in range(num_rows):
-            for col_idx in range(len(column_names)):
+        for row_idx, row_data in enumerate(data_to_display):
+            self.table.insertRow(row_idx)
+            for col_idx, item in enumerate(row_data):
                 self.table.setItem(
-                    row_idx,
-                    col_idx,
-                    QtWidgets.QTableWidgetItem(
-                        str(
-                            self.results[self.current_page * ROWS_PER_PAGE + row_idx][
-                                col_idx
-                            ]
-                        )
-                    ),
+                    row_idx, col_idx, QtWidgets.QTableWidgetItem(str(item))
                 )
 
-    def next_page(self):
-        if (self.current_page + 1) * ROWS_PER_PAGE < len(self.results):
-            self.current_page += 1
-            self.update_table(
-                [
-                    description[0]
-                    for description in self.conn.execute(
-                        "SELECT * FROM post_soil_flux"
-                    ).description
-                ]
-            )
+        self.table.resizeColumnsToContents()
 
     def previous_page(self):
         if self.current_page > 0:
             self.current_page -= 1
-            self.update_table(
-                [
-                    description[0]
-                    for description in self.conn.execute(
-                        "SELECT * FROM post_soil_flux"
-                    ).description
-                ]
-            )
+            self.update_table(self.selected_columns)
 
-    def export_csv(self):
-        if not self.results:  # Check if no search results are available
-            response = QtWidgets.QMessageBox.question(
-                self,
-                "Export All Data",
-                "No search results available. Do you want to export the entire database?",
-                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
-            )
-
-            if response == QtWidgets.QMessageBox.Yes:
-                # Fetch all data from the database
-                cursor = self.conn.cursor()
-                cursor.execute("SELECT * FROM post_soil_flux")
-                self.results = cursor.fetchall()
-                column_names = [description[0] for description in cursor.description]
-                cursor.close()
-            else:
-                return
-
-        # Define the CSV filename and path
-        current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
-        csv_filename = f"exported_data_{current_time}.csv"
-        csv_path = os.path.join(os.path.dirname(self.db_path), csv_filename)
-
-        # Write the data (either search results or the whole table) to a CSV file
-        with open(csv_path, mode="w", newline="") as file:
-            writer = csv.writer(file)
-            writer.writerow(column_names)
-            writer.writerows(self.results)
-
-        QtWidgets.QMessageBox.information(
-            self, "Export Successful", f"Results exported to {csv_path}"
-        )
-
-    def handle_duplicates(self):
-        cursor = self.conn.cursor()
-        cursor.execute(
-            "SELECT plot_code, COUNT(*) FROM post_soil_flux GROUP BY plot_code HAVING COUNT(*) > 1"
-        )
-        duplicates = cursor.fetchall()
-        if not duplicates:
-            QtWidgets.QMessageBox.information(
-                self, "No Duplicates", "No duplicate entries found."
-            )
-        else:
-            duplicate_msg = "\n".join(
-                [f"{row[0]}: {row[1]} duplicates" for row in duplicates]
-            )
-            QtWidgets.QMessageBox.warning(self, "Duplicates Found", duplicate_msg)
+    def next_page(self):
+        if (self.current_page + 1) * ROWS_PER_PAGE < len(self.results):
+            self.current_page += 1
+            self.update_table(self.selected_columns)
 
     def backup_database(self):
-        db_directory = os.path.dirname(self.db_path)
-        backup_path = os.path.join(
-            db_directory, f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
-        )
-        shutil.copy2(self.db_path, backup_path)
+        backup_file = f"{self.db_path}.backup"
+        shutil.copy(self.db_path, backup_file)
         QtWidgets.QMessageBox.information(
-            self, "Backup Successful", f"Database backed up to {backup_path}"
+            self, "Backup Successful", "Database backup created."
         )
 
     def open_db_browser(self):
-        try:
-            subprocess.run(["open", "-a", "DB Browser for SQLite", self.db_path])
-        except Exception as e:
-            QtWidgets.QMessageBox.critical(self, "Error", str(e))
+        db_browser_path = "/Applications/DB Browser for SQLite.app"
+        subprocess.call(["open", db_browser_path])
+
+    def export_csv(self):
+        # Create an export dialog for column selection
+        column_dialog = QtWidgets.QDialog(self)
+        column_dialog.setWindowTitle("Export CSV")
+        column_dialog.setGeometry(100, 100, 400, 300)
+
+        layout = QtWidgets.QVBoxLayout()
+        label = QtWidgets.QLabel("Select Columns to Export:", self)
+        layout.addWidget(label)
+
+        # Add checkboxes for each column
+        self.column_checkboxes = {}
+        for column in self.selected_columns:
+            checkbox = QtWidgets.QCheckBox(column)
+            checkbox.setChecked(False)  # Default unchecked
+            self.column_checkboxes[column] = checkbox
+            layout.addWidget(checkbox)
+
+        # Quick selection buttons
+        select_full_button = QtWidgets.QPushButton("Select Full Columns", self)
+        select_full_button.clicked.connect(self.select_full_columns)
+        layout.addWidget(select_full_button)
+
+        select_selected_button = QtWidgets.QPushButton("Select Selected Columns", self)
+        select_selected_button.clicked.connect(self.select_selected_columns)
+        layout.addWidget(select_selected_button)
+
+        export_button = QtWidgets.QPushButton("Export", self)
+        export_button.clicked.connect(lambda: self.confirm_export(column_dialog))
+        layout.addWidget(export_button)
+
+        column_dialog.setLayout(layout)
+        column_dialog.exec_()
+
+    def select_full_columns(self):
+        for checkbox in self.column_checkboxes.values():
+            checkbox.setChecked(True)  # Select all columns
+
+    def select_selected_columns(self):
+        for column in self.selected_columns:
+            self.column_checkboxes[column].setChecked(column in self.selected_columns)  # Select only the selected columns
+
+    def confirm_export(self, dialog):
+        selected_columns = [
+            column
+            for column, checkbox in self.column_checkboxes.items()
+            if checkbox.isChecked()
+        ]
+        if selected_columns:
+            file_name, _ = QtWidgets.QFileDialog.getSaveFileName(
+                self, "Save CSV", "", "CSV Files (*.csv)"
+            )
+            if file_name:
+                self.save_to_csv(file_name, selected_columns)
+                QtWidgets.QMessageBox.information(
+                    self, "Export Successful", "Data exported successfully."
+                )
+        dialog.close()
+
+    def save_to_csv(self, file_name, selected_columns):
+    # Get the column names from the current results
+        if self.results:
+            column_names = [description[0] for description in self.conn.execute("SELECT * FROM post_soil_flux").description]
+            
+            # Create a mapping from column name to index
+            col_index_map = {name: index for index, name in enumerate(column_names)}
+
+            with open(file_name, mode="w", newline="") as file:
+                writer = csv.writer(file)
+                writer.writerow(selected_columns)  # Write headers
+
+                for row in self.results:
+                    # Use the mapping to access the correct indices
+                    writer.writerow(
+                        [row[col_index_map[col]] for col in selected_columns if col in col_index_map]
+                    )  # Write selected data
 
 
-def main():
+
+if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
     window = SoilFluxDatabaseApp()
     window.show()
     sys.exit(app.exec_())
-
-
-if __name__ == "__main__":
-    main()
