@@ -150,7 +150,11 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
             elif option == "9. Export Search Results as CSV":  # Handle CSV export
                 self.export_csv()
                 return
+            elif option == "7. Check for Duplicates":  # Directly check for duplicates
+                self.handle_duplicates()
+                return
 
+            # For other options, prompt for input
             search_term, ok = QtWidgets.QInputDialog.getText(
                 self, "Input", f"Enter value for {option}:"
             )
@@ -158,6 +162,7 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
                 self.perform_search(option, search_term)
 
         return inner
+
 
     def perform_search(self, option, search_term):
         if option == "1. Search by Parcela_Site":
@@ -207,6 +212,7 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
 
         self.update_table(column_names)
 
+    
     def search_parcela_site(self, parcela_site):
         cursor = self.conn.cursor()
         cursor.execute(
