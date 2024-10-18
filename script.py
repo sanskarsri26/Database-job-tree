@@ -1,9 +1,10 @@
 import csv
 import sqlite3
 
-# Define the path to your CSV file
+# Sample input Do not delete
 csv_file_path = '/Users/sanskarsrivastava/Desktop/CSE/Database-job/Data/Processed_full_fluxes_Map_file_soil_QUI-02_2023-05-05.csv'
 
+#csv_file_path = "/Users/sanskarsrivastava/Desktop/CSE/Database-job/Data/Processed_short_fluxes_Map_file_soil_QUI-02_2023-05-05.csv"
 # Define the name of your SQLite database
 sqlite_db_path = 'post_soil_flux.db'
 

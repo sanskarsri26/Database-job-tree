@@ -10,6 +10,7 @@ from PyQt5 import QtWidgets, QtCore
 # Pagination constants
 ROWS_PER_PAGE = 50
 
+
 class SoilFluxDatabaseApp(QtWidgets.QWidget):
 
     def __init__(self):
@@ -163,7 +164,6 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
 
         return inner
 
-
     def perform_search(self, option, search_term):
         if option == "1. Search by Parcela_Site":
             self.results, column_names = self.search_parcela_site(search_term)
@@ -212,7 +212,6 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
 
         self.update_table(column_names)
 
-    
     def search_parcela_site(self, parcela_site):
         cursor = self.conn.cursor()
         cursor.execute(
@@ -362,7 +361,9 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
 
     def select_selected_columns(self):
         for column in self.selected_columns:
-            self.column_checkboxes[column].setChecked(column in self.selected_columns)  # Select only the selected columns
+            self.column_checkboxes[column].setChecked(
+                column in self.selected_columns
+            )  # Select only the selected columns
 
     def confirm_export(self, dialog):
         selected_columns = [
@@ -382,10 +383,15 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
         dialog.close()
 
     def save_to_csv(self, file_name, selected_columns):
-    # Get the column names from the current results
+        # Get the column names from the current results
         if self.results:
-            column_names = [description[0] for description in self.conn.execute("SELECT * FROM post_soil_flux").description]
-            
+            column_names = [
+                description[0]
+                for description in self.conn.execute(
+                    "SELECT * FROM post_soil_flux"
+                ).description
+            ]
+
             # Create a mapping from column name to index
             col_index_map = {name: index for index, name in enumerate(column_names)}
 
@@ -396,9 +402,12 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
                 for row in self.results:
                     # Use the mapping to access the correct indices
                     writer.writerow(
-                        [row[col_index_map[col]] for col in selected_columns if col in col_index_map]
+                        [
+                            row[col_index_map[col]]
+                            for col in selected_columns
+                            if col in col_index_map
+                        ]
                     )  # Write selected data
-
 
 
 if __name__ == "__main__":
