@@ -10,12 +10,14 @@ from PyQt5 import QtWidgets, QtCore
 # Pagination constants
 ROWS_PER_PAGE = 50
 
-class SoilFluxDatabaseApp(QtWidgets.QWidget):
 
+class SoilFluxDatabaseApp(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
         self.init_ui()
-        self.db_path = self.select_database()  # Open file dialog to select database
+        self.username = self.prompt_username()
+        self.log_username()
+        self.db_path = self.select_database()
         self.conn = sqlite3.connect(self.db_path)
         self.results = []
         self.current_page = 0
@@ -77,6 +79,12 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
         self.layout = QtWidgets.QVBoxLayout()
         self.layout.setMenuBar(menubar)
 
+        # Username input
+        self.username_label = QtWidgets.QLabel("Username:")
+        self.username_input = QtWidgets.QLineEdit()
+        self.layout.addWidget(self.username_label)
+        self.layout.addWidget(self.username_input)
+
         # Dropdown for column selection (Full Column / Selected Column)
         self.column_selection_combo = QtWidgets.QComboBox(self)
         self.column_selection_combo.addItems(["Full Column", "Selected Column"])
@@ -128,6 +136,10 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
 
         self.layout.addLayout(self.navigation_layout)
         self.setLayout(self.layout)
+
+    def on_username_changed(self, text):
+        self.username = text
+        self.log_area.append(f"Username changed to {text} at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
     def select_database(self):
         db_file, _ = QtWidgets.QFileDialog.getOpenFileName(
@@ -310,11 +322,12 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
             self.update_table(self.selected_columns)
 
     def backup_database(self):
-        backup_file = f"{self.db_path}.backup"
-        shutil.copy(self.db_path, backup_file)
-        QtWidgets.QMessageBox.information(
-            self, "Backup Successful", "Database backup created."
-        )
+        try:
+            backup_file = f"{self.db_path}.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+            shutil.copy2(self.db_path, backup_file)
+            QtWidgets.QMessageBox.information(self, "Backup Successful", f"Database backup created: {backup_file}")
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "Backup Failed", f"Failed to create backup: {str(e)}")
 
     def open_db_browser(self):
         db_browser_path = "/Applications/DB Browser for SQLite.app"
@@ -382,31 +395,44 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
         dialog.close()
 
     def save_to_csv(self, file_name, selected_columns):
-        # Get the column names from the current results
-        if self.results:
-            column_names = [
-                description[0]
-                for description in self.conn.execute(
-                    "SELECT * FROM post_soil_flux"
-                ).description
-            ]
+        # Ensure there are results to export
+        if not self.results:
+            QtWidgets.QMessageBox.warning(self, "No Data", "There are no results to export.")
+            return
 
-            # Create a mapping from column name to index
-            col_index_map = {name: index for index, name in enumerate(column_names)}
+        # Get the column names from the database
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM post_soil_flux LIMIT 1")
+        column_names = [description[0] for description in cursor.description]
 
-            with open(file_name, mode="w", newline="") as file:
-                writer = csv.writer(file)
-                writer.writerow(selected_columns)  # Write headers
+        # Create a mapping from column name to index
+        col_index_map = {name: index for index, name in enumerate(column_names)}
 
-                for row in self.results:
-                    # Use the mapping to access the correct indices
-                    writer.writerow(
-                        [
-                            row[col_index_map[col]]
-                            for col in selected_columns
-                            if col in col_index_map
-                        ]
-                    )  # Write selected data
+        # Open the CSV file for writing
+        with open(file_name, mode="w", newline="") as file:
+            writer = csv.writer(file)
+
+            # Write the selected column headers
+            writer.writerow(selected_columns)
+
+            # Write the data rows based on selected columns
+            for result in self.results:
+                # Create a row that contains only the selected columns
+                row = [result[col_index_map[col]] for col in selected_columns]
+                writer.writerow(row)
+
+    def prompt_username(self):
+        username, ok = QtWidgets.QInputDialog.getText(self, 'Username Input', 'Enter your username:')
+        if ok and username:
+            return username
+        else:
+            return None  # Handle case where no username is entere
+
+    def log_username(self):
+        if self.username:
+            log_entry = f"Username: {self.username} - Date & Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+            with open('log.txt', 'a') as log_file:
+                log_file.write(log_entry)
 
 
 if __name__ == "__main__":
