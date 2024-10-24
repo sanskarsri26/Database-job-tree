@@ -194,6 +194,26 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
         self.layout.addLayout(self.navigation_layout)
         self.setLayout(self.layout)
 
+    def closeEvent(self, event):
+            # Save the database with a timestamped filename
+            self.save_database_on_exit()
+            event.accept()  # Accept the event to close the window
+
+    def save_database_on_exit(self):
+        try:
+            # Create a filename with current date and time
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            backup_file = f"saved_data_{timestamp}.db"
+            # Copy the database to a new file
+            shutil.copy2(self.db_path, backup_file)
+            QtWidgets.QMessageBox.information(
+                self, "Save Successful", f"Database saved as: {backup_file}"
+            )
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(
+                self, "Save Failed", f"Failed to save database: {str(e)}"
+            )
+
     def on_username_changed(self, text):
         self.username = text
         self.log_area.append(
@@ -334,7 +354,7 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
 
     def search_mini_plot(self, mini_plot):
         cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM post_soil_flux WHERE mini_plot = ?", (mini_plot,))
+        cursor.execute("SELECT * FROM post_soil_flux WHERE sub_plot = ?", (mini_plot,))
         results = cursor.fetchall()
         column_names = [description[0] for description in cursor.description]
         cursor.close()
@@ -631,7 +651,6 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
                     column1, criteria1, column2, criteria2
                 )
                 self.close()
-
 
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
