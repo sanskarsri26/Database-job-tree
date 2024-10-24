@@ -342,8 +342,19 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
 
     def handle_duplicates(self):
         cursor = self.conn.cursor()
+        # Query to find duplicates based on smpl_date, sub_plot, and chamber
         cursor.execute(
-            "SELECT smpl_date, sub_plot, chamber, COUNT(*) as count FROM post_soil_flux GROUP BY smpl_date, sub_plot, chamber HAVING count > 1"
+            """
+            SELECT rowid, smpl_date, sub_plot, chamber
+            FROM post_soil_flux
+            WHERE (smpl_date, sub_plot, chamber) IN (
+                SELECT smpl_date, sub_plot, chamber
+                FROM post_soil_flux
+                GROUP BY smpl_date, sub_plot, chamber
+                HAVING COUNT(*) > 1
+            )
+            ORDER BY smpl_date, sub_plot, chamber
+            """
         )
         duplicates = cursor.fetchall()
 
@@ -353,9 +364,22 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
             )
         else:
             msg = "Duplicate records found:\n\n"
+            current_key = None
+
             for row in duplicates:
-                msg += f"Date: {row[0]}, Plot: {row[1]}, Chamber: {row[2]}, Count: {row[3]}\n"
+                key = (row[1], row[2], row[3])  # (smpl_date, sub_plot, chamber)
+                if key != current_key:
+                    if current_key is not None:
+                        msg += "\n"  # Separate different groups of duplicates
+                    current_key = key
+                    msg += f"Date: {row[1]}, Plot: {row[2]}, Chamber: {row[3]}\n"
+                
+                msg += f"  - Row ID: {row[0]}\n"
+
+            msg += "\nPlease resolve these duplicates by reviewing the data."
             QtWidgets.QMessageBox.information(self, "Duplicates", msg)
+
+        cursor.close()
 
     def update_table(self, column_names):
         self.table.setRowCount(0)
@@ -446,9 +470,7 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
         select_full_button.clicked.connect(self.select_full_columns)
         layout.addWidget(select_full_button)
 
-        select_selected_button = QtWidgets.QPushButton("Select Selected Columns", self)
-        select_selected_button.clicked.connect(self.select_selected_columns)
-        layout.addWidget(select_selected_button)
+        
 
         export_button = QtWidgets.QPushButton("Export", self)
         export_button.clicked.connect(lambda: self.confirm_export(column_dialog))
@@ -581,8 +603,6 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
             # Add dropdowns to layout
             layout.addWidget(QLabel("Select First Column:"))
             layout.addWidget(self.column1_dropdown)
-            layout.addWidget(QLabel("Select Second Column:"))
-            layout.addWidget(self.column2_dropdown)
 
             # Search button
             search_button = QPushButton("Search", self)
