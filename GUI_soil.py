@@ -10,7 +10,6 @@ from PyQt5 import QtWidgets, QtCore
 # Pagination constants
 ROWS_PER_PAGE = 50
 
-
 class SoilFluxDatabaseApp(QtWidgets.QWidget):
 
     def __init__(self):
