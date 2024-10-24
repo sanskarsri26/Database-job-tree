@@ -6,9 +6,71 @@ import subprocess
 import csv
 from datetime import datetime
 from PyQt5 import QtWidgets, QtCore
+from PyQt5 import QtWidgets
+from PyQt5.QtWidgets import (
+    QDialog,
+    QVBoxLayout,
+    QComboBox,
+    QPushButton,
+    QLabel,
+    QMessageBox,
+)
 
 # Pagination constants
 ROWS_PER_PAGE = 50
+
+
+class MultiSearchDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Multiple Search")
+        self.setGeometry(100, 100, 400, 200)
+
+        # Layout
+        layout = QVBoxLayout()
+
+        # Dropdowns for column selection
+        self.column1_dropdown = QComboBox(self)
+        self.column2_dropdown = QComboBox(self)
+
+        # Populate dropdowns with column names from the database
+        column_names = parent.get_column_names_from_db()
+        self.column1_dropdown.addItems(column_names)
+        self.column2_dropdown.addItems(column_names)
+
+        # Add dropdowns to layout
+        layout.addWidget(QLabel("Select First Column:"))
+        layout.addWidget(self.column1_dropdown)
+        layout.addWidget(QLabel("Select Second Column:"))
+        layout.addWidget(self.column2_dropdown)
+
+        # Search button
+        search_button = QPushButton("Search", self)
+        search_button.clicked.connect(self.perform_search)
+
+        # Add button to layout
+        layout.addWidget(search_button)
+
+        self.setLayout(layout)
+
+    def perform_search(self):
+        column1 = self.column1_dropdown.currentText()
+        column2 = self.column2_dropdown.currentText()
+
+        # Get criteria from user input
+        criteria1, ok1 = QtWidgets.QInputDialog.getText(
+            self, "Input", f"Enter criteria for {column1}:"
+        )
+        criteria2, ok2 = QtWidgets.QInputDialog.getText(
+            self, "Input", f"Enter criteria for {column2}:"
+        )
+
+        if ok1 and ok2:
+            # Call the parent's search function
+            self.parent().perform_multiple_search(
+                column1, criteria1, column2, criteria2
+            )
+            self.close()
 
 
 class SoilFluxDatabaseApp(QtWidgets.QWidget):
@@ -79,12 +141,6 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
         self.layout = QtWidgets.QVBoxLayout()
         self.layout.setMenuBar(menubar)
 
-        # Username input
-        self.username_label = QtWidgets.QLabel("Username:")
-        self.username_input = QtWidgets.QLineEdit()
-        self.layout.addWidget(self.username_label)
-        self.layout.addWidget(self.username_input)
-
         # Dropdown for column selection (Full Column / Selected Column)
         self.column_selection_combo = QtWidgets.QComboBox(self)
         self.column_selection_combo.addItems(["Full Column", "Selected Column"])
@@ -112,6 +168,7 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
             "7. Check for Duplicates",
             "8. Backup Database",
             "9. Export Search Results as CSV",
+            "10. Multiple Search",
         ]
 
         for option in options:
@@ -139,7 +196,9 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
 
     def on_username_changed(self, text):
         self.username = text
-        self.log_area.append(f"Username changed to {text} at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        self.log_area.append(
+            f"Username changed to {text} at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        )
 
     def select_database(self):
         db_file, _ = QtWidgets.QFileDialog.getOpenFileName(
@@ -156,6 +215,7 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
     def create_search_dialog(self, option):
         def inner():
             if option == "8. Backup Database":  # Handle the backup option separately
+                self.prompt_and_log_changes()
                 self.backup_database()
                 self.open_db_browser()  # Open DB Browser after backup
                 return
@@ -165,7 +225,11 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
             elif option == "7. Check for Duplicates":  # Directly check for duplicates
                 self.handle_duplicates()
                 return
-
+            elif option == "10. Multiple Search":  # Directly handle multiple search
+                dialog = MultiSearchDialog(self)
+                dialog.exec_()
+                return
+            
             # For other options, prompt for input
             search_term, ok = QtWidgets.QInputDialog.getText(
                 self, "Input", f"Enter value for {option}:"
@@ -311,6 +375,26 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
 
         self.table.resizeColumnsToContents()
 
+    def prompt_and_log_changes(self):
+        # Prompt for username
+        username, ok1 = QtWidgets.QInputDialog.getText(self, 'Username Input', 'Enter your username:')
+        if not ok1 or not username:
+            QtWidgets.QMessageBox.warning(self, "Input Error", "Username is required.")
+            return
+
+        # Prompt for changes
+        changes, ok2 = QtWidgets.QInputDialog.getText(self, 'Changes Input', 'Describe the changes you made:')
+        if not ok2 or not changes:
+            QtWidgets.QMessageBox.warning(self, "Input Error", "Description of changes is required.")
+            return
+
+        # Log the information
+        log_entry = f"Username: {username}, Changes: {changes}, Date & Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        with open('changes_log.txt', 'a') as log_file:
+            log_file.write(log_entry)
+
+        QtWidgets.QMessageBox.information(self, "Log Successful", "Your changes have been logged successfully.")
+
     def previous_page(self):
         if self.current_page > 0:
             self.current_page -= 1
@@ -323,11 +407,17 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
 
     def backup_database(self):
         try:
-            backup_file = f"{self.db_path}.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+            backup_file = (
+                f"{self.db_path}.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+            )
             shutil.copy2(self.db_path, backup_file)
-            QtWidgets.QMessageBox.information(self, "Backup Successful", f"Database backup created: {backup_file}")
+            QtWidgets.QMessageBox.information(
+                self, "Backup Successful", f"Database backup created: {backup_file}"
+            )
         except Exception as e:
-            QtWidgets.QMessageBox.critical(self, "Backup Failed", f"Failed to create backup: {str(e)}")
+            QtWidgets.QMessageBox.critical(
+                self, "Backup Failed", f"Failed to create backup: {str(e)}"
+            )
 
     def open_db_browser(self):
         db_browser_path = "/Applications/DB Browser for SQLite.app"
@@ -397,7 +487,9 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
     def save_to_csv(self, file_name, selected_columns):
         # Ensure there are results to export
         if not self.results:
-            QtWidgets.QMessageBox.warning(self, "No Data", "There are no results to export.")
+            QtWidgets.QMessageBox.warning(
+                self, "No Data", "There are no results to export."
+            )
             return
 
         # Get the column names from the database
@@ -422,7 +514,9 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
                 writer.writerow(row)
 
     def prompt_username(self):
-        username, ok = QtWidgets.QInputDialog.getText(self, 'Username Input', 'Enter your username:')
+        username, ok = QtWidgets.QInputDialog.getText(
+            self, "Username Input", "Enter your username:"
+        )
         if ok and username:
             return username
         else:
@@ -431,8 +525,92 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
     def log_username(self):
         if self.username:
             log_entry = f"Username: {self.username} - Date & Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-            with open('log.txt', 'a') as log_file:
+            with open("log.txt", "a") as log_file:
                 log_file.write(log_entry)
+
+    def perform_query(self, query, params):
+        cursor = self.conn.cursor()
+        cursor.execute(query, params)
+        results = cursor.fetchall()
+        cursor.close()
+        return results
+
+    def perform_multiple_search(self, column1, criteria1, column2, criteria2):
+        query = (
+            f"SELECT * FROM post_soil_flux WHERE {column1} LIKE ? AND {column2} LIKE ?"
+        )
+        results = self.perform_query(query, (f"%{criteria1}%", f"%{criteria2}%"))
+
+        if results:
+            self.results = results
+            column_names = [
+                description[0]
+                for description in self.conn.execute(
+                    "SELECT * FROM post_soil_flux"
+                ).description
+            ]
+            self.update_table(column_names)
+        else:
+            QMessageBox.warning(
+                self, "No Results", "No results found for the given criteria."
+            )
+
+    def get_column_names_from_db(self):
+        cursor = self.conn.cursor()
+        cursor.execute("PRAGMA table_info(post_soil_flux)")
+        return [row[1] for row in cursor.fetchall()]
+
+    class MultiSearchDialog(QDialog):
+        def __init__(self, parent=None):
+            super().__init__(parent)
+            self.setWindowTitle("Multiple Search")
+            self.setGeometry(100, 100, 400, 200)
+
+            # Layout
+            layout = QVBoxLayout()
+
+            # Dropdowns for column selection
+            self.column1_dropdown = QComboBox(self)
+            self.column2_dropdown = QComboBox(self)
+
+            # Populate dropdowns with column names from the database
+            column_names = parent.get_column_names_from_db()
+            self.column1_dropdown.addItems(column_names)
+            self.column2_dropdown.addItems(column_names)
+
+            # Add dropdowns to layout
+            layout.addWidget(QLabel("Select First Column:"))
+            layout.addWidget(self.column1_dropdown)
+            layout.addWidget(QLabel("Select Second Column:"))
+            layout.addWidget(self.column2_dropdown)
+
+            # Search button
+            search_button = QPushButton("Search", self)
+            search_button.clicked.connect(self.perform_search)
+
+            # Add button to layout
+            layout.addWidget(search_button)
+
+            self.setLayout(layout)
+
+        def perform_search(self):
+            column1 = self.column1_dropdown.currentText()
+            column2 = self.column2_dropdown.currentText()
+
+            # Get criteria from user input (you can add input fields for these)
+            criteria1, ok1 = QtWidgets.QInputDialog.getText(
+                self, "Input", f"Enter criteria for {column1}:"
+            )
+            criteria2, ok2 = QtWidgets.QInputDialog.getText(
+                self, "Input", f"Enter criteria for {column2}:"
+            )
+
+            if ok1 and ok2:
+                # Call the parent's search function
+                self.parent().perform_multiple_search(
+                    column1, criteria1, column2, criteria2
+                )
+                self.close()
 
 
 if __name__ == "__main__":
@@ -440,3 +618,12 @@ if __name__ == "__main__":
     window = SoilFluxDatabaseApp()
     window.show()
     sys.exit(app.exec_())
+
+from PyQt5.QtWidgets import (
+    QDialog,
+    QVBoxLayout,
+    QComboBox,
+    QPushButton,
+    QLabel,
+    QMessageBox,
+)
