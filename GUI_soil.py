@@ -34,7 +34,7 @@ class MultiSearchDialog(QDialog):
         self.column2_dropdown = QComboBox(self)
 
         # Populate dropdowns with column names from the database
-        column_names = parent.get_column_names_from_db()
+        column_names = parent.get_column_names_from_db_2('post_soil_flux')
         self.column1_dropdown.addItems(column_names)
         self.column2_dropdown.addItems(column_names)
 
@@ -138,6 +138,8 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
         open_db_action.triggered.connect(self.open_db_browser)
         file_menu.addAction(open_db_action)
 
+        self.top_row_layout = QtWidgets.QHBoxLayout()  # Create a horizontal layout for the top row
+
         self.layout = QtWidgets.QVBoxLayout()
         self.layout.setMenuBar(menubar)
 
@@ -145,6 +147,12 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
         self.column_selection_combo = QtWidgets.QComboBox(self)
         self.column_selection_combo.addItems(["Full Column", "Selected Column"])
         self.column_selection_combo.setCurrentIndex(0)  # Default to Full Column
+        self.top_row_layout.addWidget(self.column_selection_combo)  # Add the dropdown to the top row layout
+
+        # Button to show all data
+        self.show_all_button = QtWidgets.QPushButton("Show All Data", self)
+        self.show_all_button.clicked.connect(self.show_all_data)  # Connect to the new method
+        self.top_row_layout.addWidget(self.show_all_button)  # Add the button to the top row layout
 
         # Layout for dropdown (positioning in top-right)
         self.dropdown_layout = QtWidgets.QHBoxLayout()
@@ -187,6 +195,8 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
         self.prev_button.clicked.connect(self.previous_page)
         self.navigation_layout.addWidget(self.prev_button)
 
+        self.table.horizontalHeader().setStretchLastSection(True)
+
         self.next_button = QtWidgets.QPushButton("Next", self)
         self.next_button.clicked.connect(self.next_page)
         self.navigation_layout.addWidget(self.next_button)
@@ -194,10 +204,21 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
         self.layout.addLayout(self.navigation_layout)
         self.setLayout(self.layout)
 
+    def show_all_data(self):
+        # Fetch all records from the database
+        query = "SELECT * FROM post_soil_flux"
+        self.results = self.perform_query(query, ())  # Call perform_query without parameters
+
+        if self.results:
+            column_names = self.get_column_names_from_db('post_soil_flux')  # Fetch column names
+            self.update_table(column_names)  # Update the table to show all data
+        else:
+            QtWidgets.QMessageBox.warning(self, "No Data", "No records found in the database.")
+
     def closeEvent(self, event):
-            # Save the database with a timestamped filename
-            self.save_database_on_exit()
-            event.accept()  # Accept the event to close the window
+        # Save the database with a timestamped filename
+        self.save_database_on_exit()
+        event.accept()  # Accept the event to close the window
 
     def save_database_on_exit(self):
         try:
@@ -249,7 +270,7 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
                 dialog = MultiSearchDialog(self)
                 dialog.exec_()
                 return
-            
+
             # For other options, prompt for input
             search_term, ok = QtWidgets.QInputDialog.getText(
                 self, "Input", f"Enter value for {option}:"
@@ -393,7 +414,7 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
                         msg += "\n"  # Separate different groups of duplicates
                     current_key = key
                     msg += f"Date: {row[1]}, Plot: {row[2]}, Chamber: {row[3]}\n"
-                
+
                 msg += f"  - Row ID: {row[0]}\n"
 
             msg += "\nPlease resolve these duplicates by reviewing the data."
@@ -401,22 +422,32 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
 
         cursor.close()
 
-    def update_table(self, column_names):
+    def update_table(self, column_names=None):
+        # Fetch all columns if not provided
+        if column_names is None:
+            column_names = self.get_column_names_from_db('post_soil_flux')  # Ensure you're getting the right columns
+
+        # Set the row and column count
         self.table.setRowCount(0)
         self.table.setColumnCount(len(column_names))
         self.table.setHorizontalHeaderLabels(column_names)
 
+        # Display data in paginated view or all data if pagination is not needed
         start_row = self.current_page * ROWS_PER_PAGE
         end_row = start_row + ROWS_PER_PAGE
+
+        # If you want to display all results without pagination, you can comment the next line
         data_to_display = self.results[start_row:end_row]
+
+        # If you want to display all results regardless of pagination
+        # data_to_display = self.results
 
         for row_idx, row_data in enumerate(data_to_display):
             self.table.insertRow(row_idx)
             for col_idx, item in enumerate(row_data):
-                self.table.setItem(
-                    row_idx, col_idx, QtWidgets.QTableWidgetItem(str(item))
-                )
+                self.table.setItem(row_idx, col_idx, QtWidgets.QTableWidgetItem(str(item)))
 
+        # Resize columns to fit content
         self.table.resizeColumnsToContents()
 
     def prompt_and_log_changes(self):
@@ -477,20 +508,36 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
         label = QtWidgets.QLabel("Select Columns to Export:", self)
         layout.addWidget(label)
 
+        # Create a scroll area
+        scroll_area = QtWidgets.QScrollArea(self)
+        scroll_area.setWidgetResizable(True)
+
+        # Create a widget to hold the checkboxes
+        checkbox_widget = QtWidgets.QWidget()
+        checkbox_layout = QtWidgets.QVBoxLayout(checkbox_widget)
+
+        # Fetch all column names from the database table 'post_soil_flux'
+        column_names = self.get_column_names_from_db('post_soil_flux')
+
         # Add checkboxes for each column
         self.column_checkboxes = {}
-        for column in self.selected_columns:
+        for column in column_names:  # Use all column names fetched from the database
             checkbox = QtWidgets.QCheckBox(column)
             checkbox.setChecked(False)  # Default unchecked
             self.column_checkboxes[column] = checkbox
-            layout.addWidget(checkbox)
+            checkbox_layout.addWidget(checkbox)
+
+        # Set the layout for the checkbox widget
+        checkbox_widget.setLayout(checkbox_layout)
+
+        # Set the widget of the scroll area
+        scroll_area.setWidget(checkbox_widget)
+        layout.addWidget(scroll_area)
 
         # Quick selection buttons
-        select_full_button = QtWidgets.QPushButton("Select Full Columns", self)
+        select_full_button = QtWidgets.QPushButton("Select All Columns", self)
         select_full_button.clicked.connect(self.select_full_columns)
         layout.addWidget(select_full_button)
-
-        
 
         export_button = QtWidgets.QPushButton("Export", self)
         export_button.clicked.connect(lambda: self.confirm_export(column_dialog))
@@ -520,11 +567,61 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
                 self, "Save CSV", "", "CSV Files (*.csv)"
             )
             if file_name:
-                self.save_to_csv(file_name, selected_columns)
+                self.save_to_csv(file_name, selected_columns)  # Pass selected columns correctly
                 QtWidgets.QMessageBox.information(
                     self, "Export Successful", "Data exported successfully."
                 )
+        else:
+            QtWidgets.QMessageBox.warning(
+                self, "No Columns Selected", "Please select at least one column to export."
+            )
         dialog.close()
+
+    def get_column_names_from_db(self, table_name):
+        """Fetches the column names from the specified table in the database."""
+        try:
+            # Create a cursor object using the database connection
+            cursor = self.conn.cursor()
+
+            # Execute the PRAGMA statement to get column information
+            cursor.execute(f"PRAGMA table_info({table_name})")
+            columns = cursor.fetchall()
+
+            # Extract column names from the fetched data
+            column_names = [column[1] for column in columns]  # column[1] contains the column name
+
+            return (column_names)
+
+        except sqlite3.Error as e:
+            print(f"An error occurred while fetching column names: {str(e)}")
+            return []
+        finally:
+            # Ensure the cursor is closed
+            cursor.close()
+
+    def get_column_names_from_db_2(self, table_name):
+        """Fetches the column names from the specified table in the database."""
+        try:
+            # Create a cursor object using the database connection
+            cursor = self.conn.cursor()
+
+            # Execute the PRAGMA statement to get column information
+            cursor.execute(f"PRAGMA table_info({table_name})")
+            columns = cursor.fetchall()
+
+            # Extract column names from the fetched data
+            column_names = [
+                column[1] for column in columns
+            ]  # column[1] contains the column name
+
+            return sorted(column_names)
+
+        except sqlite3.Error as e:
+            print(f"An error occurred while fetching column names: {str(e)}")
+            return []
+        finally:
+            # Ensure the cursor is closed
+            cursor.close()
 
     def save_to_csv(self, file_name, selected_columns):
         # Ensure there are results to export
@@ -534,7 +631,9 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
             )
             return
 
-        # Get the column names from the database
+        # get_column_names_from_db(self)
+
+        # Get the column names from the database to ensure index mapping
         cursor = self.conn.cursor()
         cursor.execute("SELECT * FROM post_soil_flux LIMIT 1")
         column_names = [description[0] for description in cursor.description]
@@ -551,9 +650,11 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
 
             # Write the data rows based on selected columns
             for result in self.results:
-                # Create a row that contains only the selected columns
-                row = [result[col_index_map[col]] for col in selected_columns]
+                # Use col_index_map to fetch the correct data for each selected column
+                row = [result[col_index_map[col]] for col in selected_columns if col in col_index_map]
                 writer.writerow(row)
+
+        cursor.close()
 
     def prompt_username(self):
         username, ok = QtWidgets.QInputDialog.getText(
@@ -570,7 +671,7 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
             with open("log.txt", "a") as log_file:
                 log_file.write(log_entry)
 
-    def perform_query(self, query, params):
+    def perform_query(self, query, params=()):
         cursor = self.conn.cursor()
         cursor.execute(query, params)
         results = cursor.fetchall()
@@ -596,61 +697,6 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
             QMessageBox.warning(
                 self, "No Results", "No results found for the given criteria."
             )
-
-    def get_column_names_from_db(self):
-        cursor = self.conn.cursor()
-        cursor.execute("PRAGMA table_info(post_soil_flux)")
-        return [row[1] for row in cursor.fetchall()]
-
-    class MultiSearchDialog(QDialog):
-        def __init__(self, parent=None):
-            super().__init__(parent)
-            self.setWindowTitle("Multiple Search")
-            self.setGeometry(100, 100, 400, 200)
-
-            # Layout
-            layout = QVBoxLayout()
-
-            # Dropdowns for column selection
-            self.column1_dropdown = QComboBox(self)
-            self.column2_dropdown = QComboBox(self)
-
-            # Populate dropdowns with column names from the database
-            column_names = parent.get_column_names_from_db()
-            self.column1_dropdown.addItems(column_names)
-            self.column2_dropdown.addItems(column_names)
-
-            # Add dropdowns to layout
-            layout.addWidget(QLabel("Select First Column:"))
-            layout.addWidget(self.column1_dropdown)
-
-            # Search button
-            search_button = QPushButton("Search", self)
-            search_button.clicked.connect(self.perform_search)
-
-            # Add button to layout
-            layout.addWidget(search_button)
-
-            self.setLayout(layout)
-
-        def perform_search(self):
-            column1 = self.column1_dropdown.currentText()
-            column2 = self.column2_dropdown.currentText()
-
-            # Get criteria from user input (you can add input fields for these)
-            criteria1, ok1 = QtWidgets.QInputDialog.getText(
-                self, "Input", f"Enter criteria for {column1}:"
-            )
-            criteria2, ok2 = QtWidgets.QInputDialog.getText(
-                self, "Input", f"Enter criteria for {column2}:"
-            )
-
-            if ok1 and ok2:
-                # Call the parent's search function
-                self.parent().perform_multiple_search(
-                    column1, criteria1, column2, criteria2
-                )
-                self.close()
 
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
