@@ -24,7 +24,7 @@ class MultiSearchDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Multiple Search")
-        self.setGeometry(100, 100, 400, 400)  # Increased height for additional inputs
+        self.setGeometry(100, 100, 400, 400)  
 
         # Layout
         layout = QVBoxLayout()
