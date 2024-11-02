@@ -24,7 +24,7 @@ class MultiSearchDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Multiple Search")
-        self.setGeometry(100, 100, 400, 200)
+        self.setGeometry(100, 100, 400, 400)  # Increased height for additional inputs
 
         # Layout
         layout = QVBoxLayout()
@@ -32,17 +32,30 @@ class MultiSearchDialog(QDialog):
         # Dropdowns for column selection
         self.column1_dropdown = QComboBox(self)
         self.column2_dropdown = QComboBox(self)
+        self.column3_dropdown = QComboBox(self)
+        self.column4_dropdown = QComboBox(self)
+        self.column5_dropdown = QComboBox(self)  # Fifth dropdown
 
         # Populate dropdowns with column names from the database
-        column_names = parent.get_column_names_from_db_2('post_soil_flux')
+        column_names = parent.get_column_names_from_db_2("post_soil_flux")
+        column_names.insert(0, "None")  # Add "None" as the first option
         self.column1_dropdown.addItems(column_names)
         self.column2_dropdown.addItems(column_names)
+        self.column3_dropdown.addItems(column_names)
+        self.column4_dropdown.addItems(column_names)
+        self.column5_dropdown.addItems(column_names)  # Populate fifth dropdown
 
         # Add dropdowns to layout
         layout.addWidget(QLabel("Select First Column:"))
         layout.addWidget(self.column1_dropdown)
         layout.addWidget(QLabel("Select Second Column:"))
         layout.addWidget(self.column2_dropdown)
+        layout.addWidget(QLabel("Select Third Column:"))
+        layout.addWidget(self.column3_dropdown)
+        layout.addWidget(QLabel("Select Fourth Column:"))
+        layout.addWidget(self.column4_dropdown)
+        layout.addWidget(QLabel("Select Fifth Column:"))  # Label for fifth column
+        layout.addWidget(self.column5_dropdown)
 
         # Search button
         search_button = QPushButton("Search", self)
@@ -56,19 +69,77 @@ class MultiSearchDialog(QDialog):
     def perform_search(self):
         column1 = self.column1_dropdown.currentText()
         column2 = self.column2_dropdown.currentText()
+        column3 = self.column3_dropdown.currentText()
+        column4 = self.column4_dropdown.currentText()
+        column5 = self.column5_dropdown.currentText()  # Get fifth column
 
         # Get criteria from user input
-        criteria1, ok1 = QtWidgets.QInputDialog.getText(
-            self, "Input", f"Enter criteria for {column1}:"
-        )
-        criteria2, ok2 = QtWidgets.QInputDialog.getText(
-            self, "Input", f"Enter criteria for {column2}:"
-        )
+        criteria1, ok1 = (
+            QtWidgets.QInputDialog.getText(
+                self, "Input", f"Enter criteria for {column1}:"
+            )
+            if column1 != "None"
+            else (None, True)
+        )  # Skip input if "None"
 
-        if ok1 and ok2:
+        criteria2, ok2 = (
+            QtWidgets.QInputDialog.getText(
+                self, "Input", f"Enter criteria for {column2}:"
+            )
+            if column2 != "None"
+            else (None, True)
+        )  # Skip input if "None"
+
+        criteria3, ok3 = (
+            QtWidgets.QInputDialog.getText(
+                self, "Input", f"Enter criteria for {column3}:"
+            )
+            if column3 != "None"
+            else (None, True)
+        )  # Skip input if "None"
+
+        criteria4, ok4 = (
+            QtWidgets.QInputDialog.getText(
+                self, "Input", f"Enter criteria for {column4}:"
+            )
+            if column4 != "None"
+            else (None, True)
+        )  # Skip input if "None"
+
+        criteria5, ok5 = (
+            QtWidgets.QInputDialog.getText(
+                self, "Input", f"Enter criteria for {column5}:"
+            )
+            if column5 != "None"
+            else (None, True)
+        )  # Skip input if "None"
+
+        # Validate that input was given for columns that are not "None"
+        if (
+            ok1
+            and (column1 == "None" or criteria1)
+            and ok2
+            and (column2 == "None" or criteria2)
+            and ok3
+            and (column3 == "None" or criteria3)
+            and ok4
+            and (column4 == "None" or criteria4)
+            and ok5
+            and (column5 == "None" or criteria5)
+        ):
+
             # Call the parent's search function
             self.parent().perform_multiple_search(
-                column1, criteria1, column2, criteria2
+                column1,
+                criteria1,
+                column2,
+                criteria2,
+                column3,
+                criteria3,
+                column4,
+                criteria4,
+                column5,
+                criteria5,
             )
             self.close()
 
@@ -127,7 +198,7 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
 
     def init_ui(self):
         self.setWindowTitle("Soil Flux Database")
-        self.setGeometry(100, 100, 800, 600)
+        self.setGeometry(300, 300, 800, 600)
 
         # Create menu bar
         menubar = QtWidgets.QMenuBar(self)
@@ -678,11 +749,37 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
         cursor.close()
         return results
 
-    def perform_multiple_search(self, column1, criteria1, column2, criteria2):
-        query = (
-            f"SELECT * FROM post_soil_flux WHERE {column1} LIKE ? AND {column2} LIKE ?"
-        )
-        results = self.perform_query(query, (f"%{criteria1}%", f"%{criteria2}%"))
+
+    def perform_multiple_search(self, column1, criteria1, column2, criteria2,
+                            column3, criteria3, column4, criteria4,
+                            column5, criteria5):
+        query = "SELECT * FROM post_soil_flux WHERE"
+        conditions = []
+        params = []
+
+        # Check each column and its criteria
+        for column, criteria in zip(
+            [column1, column2, column3, column4, column5],
+            [criteria1, criteria2, criteria3, criteria4, criteria5]
+        ):
+            if column != "None" and criteria:  # Ensure column is not 'None' and criteria is provided
+                conditions.append(f"{column} LIKE ?")
+                params.append(f"%{criteria}%")
+
+        # Only combine conditions if any are present
+        if conditions:
+            query += " " + " AND ".join(conditions)  # Properly join conditions
+        else:
+            # If no conditions, handle this case
+            QMessageBox.warning(self, "No Conditions", "At least one condition must be specified.")
+            return  # Exit the method if there are no conditions
+
+        # Debugging: print the generated query and parameters
+        print("Generated Query:", query)
+        print("Parameters:", params)
+
+        # Execute the query
+        results = self.perform_query(query, params)
 
         if results:
             self.results = results
@@ -697,6 +794,7 @@ class SoilFluxDatabaseApp(QtWidgets.QWidget):
             QMessageBox.warning(
                 self, "No Results", "No results found for the given criteria."
             )
+
 
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
